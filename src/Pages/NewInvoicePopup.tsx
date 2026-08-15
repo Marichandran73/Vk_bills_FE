@@ -10,7 +10,6 @@ import {
   Mail,
   Phone,
   MapPin,
-  // Hash,
   Calendar as CalendarIcon,
   Building2,
   Receipt,
@@ -33,26 +32,6 @@ import LogoImage from "../assets/Image/Logo.png";
 import PaymentQR from "./Payment/PaymentQR";
 import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas-pro";
-
-// ---- Company details for the invoice print ----
-// const COMPANY = {
-//   name: "VK & CO",
-//   tagline: "PLASTIC RECYCLING & TRADING SOLUTIONS",
-//   address:
-//     "No. 12/1, Industrial Area, Thoothukudi - 628 001, Tamil Nadu, India",
-//   phone: "+91 98765 43210",
-//   email: "vkandco.info@gmail.com",
-//   website: "www.vkandco.in",
-//   gstin: "33ABCDE1234F1Z5",
-//   pan: "ABCDE1234F",
-//   bank: {
-//     name: "HDFC BANK",
-//     accountName: "VK & CO",
-//     accountNumber: "50200012345678",
-//     ifsc: "HDFC0001234",
-//     branch: "Thoothukudi - 628001",
-//   },
-// };
 
 const NewInvoicePopup = ({
   onClose,
@@ -96,7 +75,8 @@ const NewInvoicePopup = ({
     "Subject to Thoothukudi Jurisdiction only.",
   ];
 
-  const [terms, setTerms] = useState<string[]>(DEFAULT_TERMS);
+  // FIX: Remove unused setTerms - keep only terms
+  const terms = DEFAULT_TERMS;
   const [selectedTerms, setSelectedTerms] = useState<string[]>([]);
 
   useEffect(() => {
@@ -141,6 +121,7 @@ const NewInvoicePopup = ({
   ];
 
   const gstOptions = [0, 5, 12, 18, 28];
+  
   // Item handlers
   const addItem = () => {
     setItems([
@@ -177,6 +158,7 @@ const NewInvoicePopup = ({
     setItems(updatedItems);
     calculateTotals(updatedItems);
   };
+  
   const calculateTotals = (updatedItems: any[]) => {
     const subTotal = updatedItems.reduce((sum, item) => sum + item.amount, 0);
     const gstTotal = updatedItems.reduce(
@@ -239,8 +221,6 @@ const NewInvoicePopup = ({
 
     try {
       const element = printRef.current;
-      // Temporarily make the element visible for html2canvas to capture
-      // (must override the `hidden` class which uses display:none !important)
       element.style.setProperty("display", "block", "important");
       element.style.position = "fixed";
       element.style.left = "-9999px";
@@ -255,7 +235,6 @@ const NewInvoicePopup = ({
         logging: false,
       });
 
-      // Restore hidden state
       element.style.removeProperty("display");
       element.style.position = "";
       element.style.left = "";
@@ -335,8 +314,6 @@ const NewInvoicePopup = ({
       toast.success(sendRes?.message || "Bill saved and sent successfully!");
 
       setSavedData(true);
-      // Generate the report after saving and sending
-      // handlePrint();
       RefreshData?.();
       onClose();
     } catch (error) {
@@ -347,7 +324,6 @@ const NewInvoicePopup = ({
 
   // ---------------- Print Preview (VK & CO style tax invoice) ----------------
   const PrintPreview = () => {
-    // Use the selected company from the dropdown for the invoice header
     const selectedCompany =
       companies.find(
         (c) => (c.tradeName || c.legalName) === customerDetails.ChooseCompany,
@@ -1434,7 +1410,6 @@ const NewInvoicePopup = ({
                   onClick={Savebill}
                 >
                   <Send className="w-4 h-4 shrink-0" />
-                  {/* <span className="hidden md:inline">Save & Send</span> */}
                   <span className="md:hidden">Send</span>
                 </button>
               </div>
