@@ -54,6 +54,8 @@ const NewInvoicePopup = ({
       gstRate: 18,
     },
   ]);
+  const [loading, setLoading] = useState(false);
+  const [printLoading, setPrintLoading] = useState(false);
 
   const [customerDetails, setCustomerDetails] = useState({
     ChooseCompany: "comp-1",
@@ -75,9 +77,10 @@ const NewInvoicePopup = ({
     "Subject to Thoothukudi Jurisdiction only.",
   ];
 
-  // FIX: Remove unused setTerms - keep only terms
-  const terms = DEFAULT_TERMS;
+  const [customTerms, setCustomTerms] = useState<string[]>([]);
+  const [newCustomTerm, setNewCustomTerm] = useState("");
   const [selectedTerms, setSelectedTerms] = useState<string[]>([]);
+  const terms = [...DEFAULT_TERMS, ...customTerms];
 
   useEffect(() => {
     if (billData?._id) {
@@ -85,7 +88,16 @@ const NewInvoicePopup = ({
         setCustomerDetails(billData.customerDetails);
       if (billData.items?.length) setItems(billData.items);
       if (billData.totals) setTotals(billData.totals);
-      if (billData.terms?.length) setSelectedTerms(billData.terms);
+      if (billData.terms?.length) {
+        const incomingTerms = billData.terms
+          .map((term: string) => term?.trim())
+          .filter(Boolean);
+
+        setSelectedTerms(incomingTerms);
+        setCustomTerms(
+          incomingTerms.filter((term: string) => !DEFAULT_TERMS.includes(term)),
+        );
+      }
     }
   }, [billData]);
 
@@ -93,6 +105,33 @@ const NewInvoicePopup = ({
     setSelectedTerms((prev) =>
       prev.includes(term) ? prev.filter((t) => t !== term) : [...prev, term],
     );
+  };
+
+  const addCustomTerm = () => {
+    const normalizedTerm = newCustomTerm.trim().replace(/\s+/g, " ");
+
+    if (!normalizedTerm) {
+      toast.error("Please enter a term before adding.");
+      return;
+    }
+
+    const exists = terms.some(
+      (term) => term.toLowerCase() === normalizedTerm.toLowerCase(),
+    );
+
+    if (exists) {
+      toast.error("This term already exists.");
+      return;
+    }
+
+    setCustomTerms((prev) => [...prev, normalizedTerm]);
+    setSelectedTerms((prev) => [...prev, normalizedTerm]);
+    setNewCustomTerm("");
+  };
+
+  const removeCustomTerm = (termToRemove: string) => {
+    setCustomTerms((prev) => prev.filter((term) => term !== termToRemove));
+    setSelectedTerms((prev) => prev.filter((term) => term !== termToRemove));
   };
 
   const [totals, setTotals] = useState({
@@ -218,9 +257,17 @@ const NewInvoicePopup = ({
   // Generate and download the invoice report as a PDF
   const handlePrint = async () => {
     if (!printRef.current) return;
+    setPrintLoading(true);
+    const element = printRef.current;
+    const prevDisplay = element.style.getPropertyValue("display");
+    const prevDisplayPriority = element.style.getPropertyPriority("display");
+    const prevPosition = element.style.position;
+    const prevLeft = element.style.left;
+    const prevTop = element.style.top;
+    const prevWidth = element.style.width;
+    const prevZIndex = element.style.zIndex;
 
     try {
-      const element = printRef.current;
       element.style.setProperty("display", "block", "important");
       element.style.position = "fixed";
       element.style.left = "-9999px";
@@ -235,13 +282,6 @@ const NewInvoicePopup = ({
         logging: false,
       });
 
-      element.style.removeProperty("display");
-      element.style.position = "";
-      element.style.left = "";
-      element.style.top = "";
-      element.style.width = "";
-      element.style.zIndex = "";
-
       const imgData = canvas.toDataURL("image/png");
       const pdf = new jsPDF({
         orientation: "portrait",
@@ -251,21 +291,16 @@ const NewInvoicePopup = ({
 
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = pdf.internal.pageSize.getHeight();
-      const imgWidth = pdfWidth;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      const widthRatio = pdfWidth / canvas.width;
+      const heightRatio = pdfHeight / canvas.height;
+      const scale = Math.min(widthRatio, heightRatio);
+      const imgWidth = canvas.width * scale;
+      const imgHeight = canvas.height * scale;
+      const x = (pdfWidth - imgWidth) / 2;
+      const y = (pdfHeight - imgHeight) / 2;
 
-      let heightLeft = imgHeight;
-      let position = 0;
-
-      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
-      heightLeft -= pdfHeight;
-
-      while (heightLeft > 0) {
-        position = heightLeft - imgHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
-        heightLeft -= pdfHeight;
-      }
+      // Always render invoice into a single page to avoid mobile split.
+      pdf.addImage(imgData, "PNG", x, y, imgWidth, imgHeight);
 
       const fileName = `invoice-${customerDetails.customerName || "report"}-${new Date().toISOString().slice(0, 10)}.pdf`;
       pdf.save(fileName);
@@ -273,19 +308,31 @@ const NewInvoicePopup = ({
     } catch (error) {
       console.error("Failed to generate PDF:", error);
       toast.error("Failed to generate PDF report. Please try again.");
+    } finally {
+      if (prevDisplay) {
+        element.style.setProperty("display", prevDisplay, prevDisplayPriority);
+      } else {
+        element.style.removeProperty("display");
+      }
+      element.style.position = prevPosition;
+      element.style.left = prevLeft;
+      element.style.top = prevTop;
+      element.style.width = prevWidth;
+      element.style.zIndex = prevZIndex;
+      setPrintLoading(false);
     }
   };
 
   // Save Report: Only generate the report (print/download), no backend save
-  const handleSaveReport = () => {
+  const handleSaveReport = async () => {
     if (!validateCustomerDetails()) return;
-    handlePrint();
-    onClose();
+    await handlePrint();
   };
 
   // Save Report & Send: Save to backend, send, and generate the report
   const Savebill = async () => {
     if (!validateCustomerDetails()) return;
+    setLoading(true);
     try {
       const res = await (SavedData
         ? apiService.put<{ message: string }>(`/update-bill/${billData._id}`, {
@@ -319,6 +366,8 @@ const NewInvoicePopup = ({
     } catch (error) {
       console.error("Failed to save bill:", error);
       toast.error("Failed to save and send bill. Please try again.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -868,7 +917,7 @@ const NewInvoicePopup = ({
                 </div>
                 <button
                   onClick={onClose}
-                  className="p-2 rounded-xl text-white/70 hover:text-white hover:bg-white/10 transition-all shrink-0"
+                  className="p-2 rounded-xl text-white/70 hover:text-white hover:bg-white/10 transition-all shrink-0 cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -994,24 +1043,58 @@ const NewInvoicePopup = ({
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">
                       Select terms & conditions
                     </label>
-                    <div className="relative space-y-1.5">
-                      {terms.map((term) => (
-                        <label
-                          key={term}
-                          className="flex gap-2 items-start cursor-pointer group"
+                    <div className="relative space-y-2">
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="Add custom term"
+                          className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all text-sm"
+                          value={newCustomTerm}
+                          onChange={(e) => setNewCustomTerm(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              addCustomTerm();
+                            }
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={addCustomTerm}
+                          className="px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-all cursor-pointer"
                         >
-                        <div className="w-[10%]">
-                           <input
-                            type="checkbox"
-                            checked={selectedTerms.includes(term)}
-                            onChange={() => toggleTerm(term)}
-                            className="mt-0.5 w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                          Add
+                        </button>
+                      </div>
+
+                      {terms.map((term) => (
+                        <div
+                          key={term}
+                          className="flex gap-2 items-start group"
+                        >
+                          <div className="w-[10%]">
+                            <input
+                              type="checkbox"
+                              checked={selectedTerms.includes(term)}
+                              onChange={() => toggleTerm(term)}
+                              className="mt-0.5 w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                             />
-                            </div> 
-                          <p className="text-sm text-gray-700 group-hover:text-gray-900 transition-colors">
+                          </div>
+                          <p className="text-sm text-gray-700 group-hover:text-gray-900 transition-colors flex-1">
                             {term}
                           </p>
-                        </label>
+
+                          {customTerms.includes(term) && (
+                            <button
+                              type="button"
+                              onClick={() => removeCustomTerm(term)}
+                              className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-all cursor-pointer"
+                              title="Remove custom term"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       ))}
                     </div>
                   </div>
@@ -1402,15 +1485,15 @@ const NewInvoicePopup = ({
                   className="cursor-pointer px-3 sm:px-5 py-2 text-sm text-white font-medium rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-1.5 whitespace-nowrap"
                 >
                   <Save className="w-4 h-4 shrink-0 cursor-pointer" />
-                  <span className="hidden md:inline">Save Report</span>
-                  <span className="md:hidden">Report</span>
+                  <span className="hidden md:inline">{printLoading ? "loading..." : "Save Report"}</span>
+                  <span className="md:hidden">{printLoading ? "loading..." : "Report"}</span>
                 </button>
                 <button
                   className="cursor-pointer px-3 sm:px-5 py-2 text-sm text-white font-medium rounded-lg bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-1.5 whitespace-nowrap"
                   onClick={Savebill}
                 >
                   <Send className="w-4 h-4 shrink-0" />
-                  <span className="md:hidden">Send</span>
+                  <span className="md:hidden">{loading ? "loading..." : "Send"}</span>
                 </button>
               </div>
             </div>

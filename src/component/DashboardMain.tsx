@@ -308,12 +308,12 @@ const DashboardMain = () => {
             </span>
           </div>
 
-          <div className="p-2 border-2 border-blue-200 rounded-sm cursor-pointer">
+          <div className="p-2 border-2 items-center border-blue-200 rounded-sm cursor-pointer">
             {callApi ? (
               <div className="w-4 h-4 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin"></div>
             ) : (
               <RefreshCcw
-                className="w-4 h-4"
+                className="w-4 h-4 content-center"
                 onClick={RefreshData}
               />
             )}
@@ -370,21 +370,24 @@ const DashboardMain = () => {
               </div>
               <BarChart3 className="w-5 h-5 text-blue-400" />
             </div>
-            <div className="flex flex-wrap gap-3 mt-4">
-              <button
-                onClick={DownloadReport}
-                className="bg-white px-4 py-2 rounded-lg text-sm font-medium text-slate-700 border border-slate-200 hover:border-blue-300 hover:shadow-sm transition-all flex items-center gap-2 cursor-pointer"
-              >
-                <Download className="w-4 h-4 text-blue-500" />
-                Download Report
-              </button>
-              <button
-                className="bg-white px-4 py-2 rounded-lg text-sm font-medium text-slate-700 border border-slate-200 hover:border-blue-300 hover:shadow-sm transition-all flex items-center gap-2 cursor-pointer"
-                onClick={() => navigate("/PreviewTable")}
-              >
-                <Eye className="w-4 h-4 text-blue-500" />
-                View All Bills
-              </button>
+            <div className="mt-4 space-y-2">
+              <span className="text-xs text-slate-500 block">Download Excel format report.</span>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  onClick={DownloadReport}
+                  className="bg-white px-4 py-2 rounded-lg text-sm font-medium text-slate-700 border border-slate-200 hover:border-blue-300 hover:shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Download className="w-4 h-4 text-blue-500" />
+                  Download Report
+                </button>
+                <button
+                  className="bg-white px-4 py-2 rounded-lg text-sm font-medium text-slate-700 border border-slate-200 hover:border-blue-300 hover:shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  onClick={() => navigate("/PreviewTable")}
+                >
+                  <Eye className="w-4 h-4 text-blue-500" />
+                  View All Bills
+                </button>
+              </div>
             </div>
           </div>
 

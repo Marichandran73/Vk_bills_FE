@@ -27,6 +27,7 @@ import NewInvoicePopup from "../Pages/NewInvoicePopup";
 import { useNavigate } from "react-router-dom";
 import LogoImage from "../assets/Image/Logo.png";
 import PaymentQR from "../Pages/Payment/PaymentQR";
+import ConfirmDelete from "./ConfirmDelete";
 
 // ---- Update these with your real company details ----
 const COMPANY = {
@@ -51,11 +52,18 @@ const COMPANY = {
 const BillTable = ({ BillData }: { BillData?: any[] }) => {
   const [bills, setBills] = useState<any[]>(BillData ?? []);
   const [selectedBill, setSelectedBill] = useState<any>(null);
-  const [filterText, setFilterText] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [filterInvoiceNo, setFilterInvoiceNo] = useState("");
+  const [filterTitle, setFilterTitle] = useState("");
+  const [filterDate, setFilterDate] = useState("");
+  const [loading, setLoading] = useState(!BillData);
   const [showInvoice, setShowInvoice] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [viewingBill, setViewingBill] = useState<any>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    id: string;
+    label: string;
+  } | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(5);
   const navigate = useNavigate();
@@ -86,19 +94,40 @@ const BillTable = ({ BillData }: { BillData?: any[] }) => {
     fetchBills();
   };
 
-  const filteredBills = filterText.trim()
-    ? bills.filter(
-        (bill) =>
-          bill._id
-            ?.slice(-6)
-            .toUpperCase()
-            .includes(filterText.trim().toUpperCase()) ||
-          bill.customerDetails?.customerName
-            ?.toLowerCase()
-            .includes(filterText.trim().toLowerCase()) ||
-          bill.customerDetails?.phone?.includes(filterText.trim()),
-      )
-    : bills;
+  const toInputDate = (dateValue?: string) => {
+    if (!dateValue) return "";
+    const date = new Date(dateValue);
+    if (Number.isNaN(date.getTime())) return "";
+    return date.toISOString().slice(0, 10);
+  };
+
+  const hasActiveFilters =
+    filterInvoiceNo.trim() || filterTitle.trim() || filterDate;
+
+  const filteredBills = bills.filter((bill) => {
+    const invoiceNo = bill._id?.slice(-6)?.toUpperCase() || "";
+    const customerName =
+      bill.customerDetails?.customerName?.toLowerCase() || "";
+    const customerCompany =
+      bill.customerDetails?.customerCompany?.toLowerCase() || "";
+    const invoiceDate = toInputDate(
+      bill.customerDetails?.invoiceDate || bill.createdAt,
+    );
+
+    const matchesInvoiceNo = filterInvoiceNo.trim()
+      ? invoiceNo.includes(filterInvoiceNo.trim().toUpperCase())
+      : true;
+
+    const titleQuery = filterTitle.trim().toLowerCase();
+    const matchesTitle = titleQuery
+      ? customerName.includes(titleQuery) ||
+        customerCompany.includes(titleQuery)
+      : true;
+
+    const matchesDate = filterDate ? invoiceDate === filterDate : true;
+
+    return matchesInvoiceNo && matchesTitle && matchesDate;
+  });
 
   // Pagination
   const indexOfLastItem = currentPage * itemsPerPage;
@@ -106,17 +135,23 @@ const BillTable = ({ BillData }: { BillData?: any[] }) => {
   const currentBills = filteredBills.slice(indexOfFirstItem, indexOfLastItem);
   const totalPages = Math.ceil(filteredBills.length / itemsPerPage);
 
-  const DeleteBill = async (billId: string) => {
+  const DeleteBill = async () => {
+    if (!deleteTarget?.id) return;
+
+    setDeleteLoading(true);
     try {
       const res = await apiService.delete<{ message: string }>(
-        `/delete-bill/${billId}`,
+        `/delete-bill/${deleteTarget.id}`,
       );
       setBills((currentBills) =>
-        currentBills.filter((bill) => bill._id !== billId),
+        currentBills.filter((bill) => bill._id !== deleteTarget.id),
       );
       toast.success(res?.message || "Bill deleted successfully!");
+      setDeleteTarget(null);
     } catch {
       toast.error("Failed to delete bill. Please try again.");
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -679,39 +714,72 @@ const BillTable = ({ BillData }: { BillData?: any[] }) => {
           </div>
         </div>
 
-        {/* Search Bar */}
-        <div className="mt-4 flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
+        {/* Filters */}
+        <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div className="relative md:col-span-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
-              placeholder="Search by Bill No, Customer Name or Phone..."
-              className="w-full pl-10 pr-4 cursor-text py-2.5 rounded-xl border border-gray-200 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 outline-none transition-all bg-gray-50/50"
+              placeholder="Filter by invoice no"
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 outline-none transition-all bg-gray-50/50"
               type="text"
-              value={filterText}
+              value={filterInvoiceNo}
               onChange={(e) => {
-                setFilterText(e.target.value);
+                setFilterInvoiceNo(e.target.value);
                 setCurrentPage(1);
               }}
             />
-            {filterText && (
-              <button
-                onClick={() => setFilterText("")}
-                className="absolute right-3 cursor-pointer top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            )}
           </div>
-          <button className="px-6 py-2.5 cursor-pointer bg-gradient-to-r from-indigo-600 to-purple-600 rounded-xl text-white font-medium hover:shadow-lg hover:shadow-indigo-200 transition-all flex items-center gap-2 whitespace-nowrap">
-            <Search className="w-4 h-4" />
-            Search
-          </button>
+
+          <div className="relative md:col-span-2">
+            <input
+              placeholder="Filter by title (customer/company)"
+              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 outline-none transition-all bg-gray-50/50"
+              type="text"
+              value={filterTitle}
+              onChange={(e) => {
+                setFilterTitle(e.target.value);
+                setCurrentPage(1);
+              }}
+            />
+          </div>
+
+          <div className="relative md:col-span-1">
+            <input
+              type="date"
+              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 outline-none transition-all bg-gray-50/50"
+              value={filterDate}
+              onChange={(e) => {
+                setFilterDate(e.target.value);
+                setCurrentPage(1);
+              }}
+            />
+          </div>
+
+          <div className="md:col-span-4 flex justify-end">
+            <button
+              type="button"
+              className="px-4 py-2.5 cursor-pointer bg-white border border-gray-200 rounded-xl text-gray-700 font-medium hover:bg-gray-50 transition-all"
+              onClick={() => {
+                setFilterInvoiceNo("");
+                setFilterTitle("");
+                setFilterDate("");
+                setCurrentPage(1);
+              }}
+            >
+              Clear Filters
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Table Section */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200/80 overflow-hidden">
-        {filteredBills.length === 0 ? (
+        {loading ? (
+          <div className="py-20 text-center">
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-indigo-600 border-t-transparent"></div>
+            <p className="mt-3 text-gray-500">Loading bills...</p>
+          </div>
+        ) : filteredBills.length === 0 ? (
           <div className="py-20 text-center">
             <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gray-100 mb-4">
               <Search className="w-8 h-8 text-gray-400" />
@@ -720,15 +788,10 @@ const BillTable = ({ BillData }: { BillData?: any[] }) => {
               No bills found
             </h3>
             <p className="text-sm text-gray-500">
-              {filterText
+              {hasActiveFilters
                 ? "Try adjusting your search terms"
                 : "Create your first invoice to get started"}
             </p>
-          </div>
-        ) : loading ? (
-          <div className="py-20 text-center">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-indigo-600 border-t-transparent"></div>
-            <p className="mt-3 text-gray-500">Loading bills...</p>
           </div>
         ) : (
           <>
@@ -907,7 +970,14 @@ const BillTable = ({ BillData }: { BillData?: any[] }) => {
                                 <button
                                   className="p-1.5 rounded-lg cursor-pointer text-gray-400 hover:text-red-600 hover:bg-red-50 transition-all"
                                   title="Delete"
-                                  onClick={() => DeleteBill(bill._id)}
+                                  onClick={() =>
+                                    setDeleteTarget({
+                                      id: bill._id,
+                                      label:
+                                        bill.customerDetails?.customerName ||
+                                        "this invoice",
+                                    })
+                                  }
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </button>
@@ -982,6 +1052,17 @@ const BillTable = ({ BillData }: { BillData?: any[] }) => {
           </>
         )}
       </div>
+
+      <ConfirmDelete
+        isOpen={Boolean(deleteTarget)}
+        title="Delete Invoice"
+        message={`Are you sure you want to delete invoice for ${deleteTarget?.label || "this invoice"}? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        loading={deleteLoading}
+        onConfirm={DeleteBill}
+        onCancel={() => setDeleteTarget(null)}
+      />
 
       {/* View Invoice Modal */}
       {showViewModal && viewingBill && (
